@@ -9,7 +9,20 @@ scikit-learn==1.1.3
 # Scraping Play Store reviews
 google-play-scraper==1.2.3
 
-# Plotting
+# Plotting and Visualization
 matplotlib==3.5.3
+seaborn==0.12.2
+
+# Progress bars
+tqdm==4.65.0
+
+# Type checking (for type hints)
+typing-extensions==4.5.0
+
+# Path handling
+pathlib==1.0.1
+
+# Logging (part of Python standard library, but listed for clarity)
+# logging is built-in
 
 

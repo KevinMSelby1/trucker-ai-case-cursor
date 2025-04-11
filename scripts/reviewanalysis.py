@@ -1,4 +1,8 @@
 import pandas as pd
+import matplotlib
+matplotlib.use('Agg')  # Set non-interactive backend
+import matplotlib.pyplot as plt
+from pathlib import Path
 
 # Load the data
 df = pd.read_csv('/app/data/truckerpath_1star_3620.csv')
@@ -51,18 +55,32 @@ top_helpful_reviews = df.sort_values(by='thumbsUpCount', ascending=False)
 # Display the top 500 most "helpful" 1-star reviews
 print(top_helpful_reviews[['userName', 'content', 'thumbsUpCount', 'at']].head(500))
 
-import matplotlib.pyplot as plt
-
-# Plot top 100 helpful reviews
+# Plot top 10 helpful reviews
 top_10 = top_helpful_reviews.head(10)
 
-plt.figure(figsize=(10, 6))
-plt.barh(top_10['userName'], top_10['thumbsUpCount'], color='crimson')
-plt.xlabel('Thumbs Up Count')
-plt.title('Top 100 Most Helpful 1-Star Reviews')
-plt.gca().invert_yaxis()  # Highest on top
-plt.tight_layout()
-plt.show()
+def save_visualization(df):
+    """Save visualization of top reviews."""
+    try:
+        output_dir = Path('/app/data')
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        top_10 = df.head(10)
+        
+        plt.figure(figsize=(10, 6))
+        plt.barh(top_10['userName'], top_10['thumbsUpCount'], color='crimson')
+        plt.xlabel('Thumbs Up Count')
+        plt.title('Top 10 Most Helpful 1-Star Reviews')
+        plt.gca().invert_yaxis()
+        plt.tight_layout()
+        
+        output_path = output_dir / 'top_10_most_helpful_reviews.png'
+        plt.savefig(output_path)
+        plt.close()
+        print(f"Visualization saved to {output_path}")
+    except Exception as e:
+        print(f"Error saving visualization: {e}")
+
+save_visualization(top_helpful_reviews)
 
 # Get the top 500 reviews sorted by thumbsUpCount
 top_500_reviews = df.sort_values(by='thumbsUpCount', ascending=False).head(500)

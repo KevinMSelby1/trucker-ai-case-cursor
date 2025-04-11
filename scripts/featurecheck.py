@@ -1,186 +1,276 @@
+"""
+Feature Analysis Script for TruckerPath App Reviews
+with progress tracking for long-running operations
+"""
+
 import pandas as pd
 import numpy as np
 import re
+from pathlib import Path
+import logging
+from typing import List, Dict, Tuple, Optional
+import string
+import matplotlib
+matplotlib.use('Agg')  # Must be before importing pyplot
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.decomposition import LatentDirichletAllocation
+import nltk
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
-import string
-import nltk
-import matplotlib.pyplot as plt
-from sklearn.feature_extraction.text import TfidfVectorizer
-from nltk.sentiment.vader import SentimentIntensityAnalyzer
-from sklearn.decomposition import LatentDirichletAllocation
+from tqdm import tqdm
+from tqdm.notebook import tqdm as tqdm_notebook
 
-# Ensure necessary NLTK data is downloaded
-nltk.download('stopwords')
-nltk.download('punkt')
-nltk.download('vader_lexicon')
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
-# Load the dataset
-df = pd.read_csv('/app/data/truckerpath_1star_3620.csv')
+class TextPreprocessor:
+    """Handles text cleaning and preprocessing operations."""
+    
+    def __init__(self):
+        """Initialize the text preprocessor and download required NLTK data."""
+        self._ensure_nltk_resources()
+        self.stop_words = set(stopwords.words('english'))
+        
+    @staticmethod
+    def _ensure_nltk_resources():
+        """Download required NLTK resources with progress tracking."""
+        required_resources = ['stopwords', 'punkt', 'vader_lexicon']
+        try:
+            for resource in tqdm(required_resources, 
+                               desc="Downloading NLTK resources",
+                               unit="resource"):
+                nltk.download(resource, quiet=True)
+            logger.info("NLTK resources downloaded successfully")
+        except Exception as e:
+            logger.error(f"Failed to download NLTK resources: {str(e)}")
+            raise
 
-# Convert all columns to strings
-df = df.astype(str)
-
-# Check the column names and first few rows
-print(df.columns)
-print(df.head())
-
-# Get info about data types and missing values
-df.info()
-
-# Check for nulls in each column
-print(df.isnull().sum())
-
-# Drop rows with no review content
-df = df.dropna(subset=['content'])
-
-# Convert date columns to datetime
-df['at'] = pd.to_datetime(df['at'])
-df['repliedAt'] = pd.to_datetime(df['repliedAt'], errors='coerce')  # some may be NaT
-
-# Fill missing values in optional columns (only if the column exists)
-if 'reviewCreatedVersion' in df.columns:
-    df['reviewCreatedVersion'] = df['reviewCreatedVersion'].fillna('Unknown')
-
-if 'appVersion' in df.columns:
-    df['appVersion'] = df['appVersion'].fillna('Unknown')
-
-if 'replyContent' in df.columns:
-    df['replyContent'] = df['replyContent'].fillna('No Reply')
-
-# (Optional) Drop columns you don't need
-df = df.drop(columns=['userImage'])
-
-# Reset index
-df.reset_index(drop=True, inplace=True)
-
-# Display a preview after cleaning
-print("Cleaning complete. Here's a preview:")
-print(df.head())
-
-# Check again after cleaning
-df.info()
-print(df.isnull().sum())
-
-# Sort reviews by thumbsUpCount (descending)
-top_helpful_reviews = df.sort_values(by='thumbsUpCount', ascending=False)
-
-# Display the top 500 most "helpful" 1-star reviews
-print(top_helpful_reviews[['userName', 'content', 'thumbsUpCount', 'at']].head(500))
-
-# Plot top 10 helpful reviews
-top_10 = top_helpful_reviews.head(10)
-
-plt.figure(figsize=(10, 6))
-plt.barh(top_10['userName'], top_10['thumbsUpCount'], color='crimson')
-plt.xlabel('Thumbs Up Count')
-plt.title('Top 10 Most Helpful 1-Star Reviews')
-plt.gca().invert_yaxis()  # Highest on top
-plt.tight_layout()
-plt.savefig('/app/data/top_10_most_helpful_reviews.png')
-plt.show()
-
-# Get the top 500 reviews sorted by thumbsUpCount
-top_500_reviews = df.sort_values(by='thumbsUpCount', ascending=False).head(500)
-
-# Export to CSV
-top_500_reviews.to_csv('/app/data/top_500_1star_reviews.csv', index=False)
-
-print("Top 500 1-star reviews with most likes exported successfully!")
-
-# Clean the content column
-stop_words = set(stopwords.words('english'))
-
-def clean_text(text):
-    # Check if the input is a string
-    if isinstance(text, str):
-        # Convert to lowercase
+    def clean_text(self, text: str) -> str:
+        """Clean and preprocess text data."""
+        if not isinstance(text, str):
+            return str(text)
+            
         text = text.lower()
-        # Remove punctuation
         text = ''.join([char for char in text if char not in string.punctuation])
-        # Tokenize and remove stopwords
         text_tokens = word_tokenize(text)
-        text = ' '.join([word for word in text_tokens if word not in stop_words])
-        return text
-    else:
-        # Handle non-string values (e.g., return as is or handle differently)
-        return str(text)  # converting non-string to string if found
+        return ' '.join([word for word in text_tokens if word not in self.stop_words])
 
-# Apply text cleaning
-df['clean_content'] = df['content'].apply(clean_text)
+    def batch_clean_texts(self, texts: pd.Series) -> pd.Series:
+        """
+        Clean multiple texts with progress tracking.
+        
+        Args:
+            texts (pd.Series): Series of texts to clean
+            
+        Returns:
+            pd.Series: Cleaned texts
+        """
+        cleaned_texts = []
+        for text in tqdm(texts, desc="Cleaning texts", unit="review"):
+            cleaned_texts.append(self.clean_text(text))
+        return pd.Series(cleaned_texts, index=texts.index)
 
-# Check cleaned data
-print(df[['content', 'clean_content', 'score']].head(10))
+class FeatureAnalyzer:
+    """Handles feature extraction and analysis of review data."""
+    
+    def __init__(self, input_path: str, output_dir: str):
+        """Initialize the feature analyzer."""
+        self.input_path = Path(input_path)
+        self.output_dir = Path(output_dir)
+        self.df: Optional[pd.DataFrame] = None
+        self.preprocessor = TextPreprocessor()
+        self.vectorizer: Optional[TfidfVectorizer] = None
+        self.lda_model: Optional[LatentDirichletAllocation] = None
+        
+    def load_and_clean_data(self) -> None:
+        """Load and clean the review data with progress tracking."""
+        try:
+            logger.info("Loading data...")
+            self.df = pd.read_csv(self.input_path)
+            
+            with tqdm(total=4, desc="Cleaning data") as pbar:
+                # Clean missing values
+                self.df = self.df.dropna(subset=['content'])
+                pbar.update(1)
+                
+                # Convert dates
+                self.df['at'] = pd.to_datetime(self.df['at'])
+                self.df['repliedAt'] = pd.to_datetime(self.df['repliedAt'], errors='coerce')
+                pbar.update(1)
+                
+                # Handle optional columns
+                optional_columns = {
+                    'reviewCreatedVersion': 'Unknown',
+                    'appVersion': 'Unknown',
+                    'replyContent': 'No Reply'
+                }
+                
+                for col, default in optional_columns.items():
+                    if col in self.df.columns:
+                        self.df[col] = self.df[col].fillna(default)
+                pbar.update(1)
+                
+                # Clean text content
+                self.df['clean_content'] = self.preprocessor.batch_clean_texts(self.df['content'])
+                pbar.update(1)
+                
+            logger.info(f"Loaded and cleaned {len(self.df)} reviews")
+        except Exception as e:
+            logger.error(f"Error loading data: {str(e)}")
+            raise
 
-# Apply TF-IDF vectorization on the cleaned content to track bigrams or trigrams
-vectorizer = TfidfVectorizer(stop_words='english', max_features=50, ngram_range=(2,3))  # For bigrams and trigrams
+    def extract_features(self, max_features: int = 50) -> None:
+        """Extract TF-IDF features with progress tracking."""
+        try:
+            logger.info("Extracting features...")
+            self.vectorizer = TfidfVectorizer(
+                stop_words='english',
+                max_features=max_features,
+                ngram_range=(2, 3)
+            )
+            
+            with tqdm(total=2, desc="Feature extraction") as pbar:
+                # Fit vectorizer
+                self.vectorizer.fit(self.df['clean_content'])
+                pbar.update(1)
+                
+                # Transform text
+                self.features = self.vectorizer.transform(self.df['clean_content'])
+                pbar.update(1)
+                
+            logger.info(f"Extracted {max_features} TF-IDF features")
+        except Exception as e:
+            logger.error(f"Feature extraction failed: {str(e)}")
+            raise
 
-# Fit and transform the cleaned content into TF-IDF features
-X_tfidf = vectorizer.fit_transform(df['clean_content'])
+    def analyze_topics(self, n_topics: int = 5, n_top_words: int = 5) -> Dict[int, List[str]]:
+        """Perform topic modeling with progress tracking."""
+        try:
+            self.lda_model = LatentDirichletAllocation(
+                n_components=n_topics,
+                random_state=42
+            )
+            
+            with tqdm(total=2, desc="Topic modeling") as pbar:
+                # Fit LDA model
+                self.lda_model.fit(self.features)
+                pbar.update(1)
+                
+                # Extract topics
+                words = self.vectorizer.get_feature_names_out()
+                topics = {}
+                
+                for idx, topic in enumerate(self.lda_model.components_):
+                    top_words = [words[i] for i in topic.argsort()[:-n_top_words - 1:-1]]
+                    topics[idx] = top_words
+                pbar.update(1)
+                
+            return topics
+        except Exception as e:
+            logger.error(f"Topic analysis failed: {str(e)}")
+            raise
 
-# Get the feature names (i.e., bigrams and trigrams)
-feature_names = vectorizer.get_feature_names_out()
+    def export_results(self) -> None:
+        """Export analysis results with progress tracking."""
+        try:
+            with tqdm(total=3, desc="Exporting results") as pbar:
+                # Calculate topic distribution
+                topic_distribution = self.lda_model.transform(self.features)
+                self.df['predicted_topic'] = topic_distribution.argmax(axis=1)
+                pbar.update(1)
+                
+                # Prepare feature scores
+                feature_scores = pd.DataFrame({
+                    'Feature': self.vectorizer.get_feature_names_out(),
+                    'Score': self.features.sum(axis=0).A1
+                }).sort_values('Score', ascending=False)
+                pbar.update(1)
+                
+                # Export files
+                output_files = {
+                    'reviews_with_topics.csv': self.df[['content', 'predicted_topic']],
+                    'feature_scores.csv': feature_scores
+                }
+                
+                for filename, data in output_files.items():
+                    output_path = self.output_dir / filename
+                    data.to_csv(output_path, index=False)
+                pbar.update(1)
+                
+                logger.info("Results exported successfully")
+        except Exception as e:
+            logger.error(f"Export failed: {str(e)}")
+            raise
 
-# Sum the TF-IDF values across all documents to get the importance of each bigram/trigram
-tfidf_scores = X_tfidf.sum(axis=0).A1  # .A1 converts the matrix to a 1D array
+    def visualize_features(self, n_features: int = 10) -> None:
+        """Create visualizations for top features."""
+        try:
+            output_dir = Path('/app/data')
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            feature_names = self.vectorizer.get_feature_names_out()
+            tfidf_scores = self.features.sum(axis=0).A1
+            
+            top_features_df = pd.DataFrame({
+                'Feature': feature_names,
+                'Score': tfidf_scores
+            }).nlargest(n_features, 'Score')
+            
+            plt.figure(figsize=(12, 6))
+            sns.barplot(data=top_features_df, x='Score', y='Feature')
+            plt.title(f'Top {n_features} Most Important Features')
+            plt.tight_layout()
+            
+            output_path = output_dir / 'top_features.png'
+            plt.savefig(output_path)
+            plt.close()
+            
+            logger.info(f"Feature visualization saved to {output_path}")
+        except Exception as e:
+            logger.error(f"Visualization failed: {str(e)}")
+            raise
 
-# Create a DataFrame to display bigrams/trigrams with their corresponding scores
-tfidf_df = pd.DataFrame(list(zip(feature_names, tfidf_scores)), columns=['Phrase', 'TF-IDF Score'])
+def main():
+    """Main execution function with overall progress tracking."""
+    try:
+        input_path = '/app/data/truckerpath_1star_3620.csv'
+        output_dir = '/app/data'
+        
+        analyzer = FeatureAnalyzer(input_path, output_dir)
+        
+        with tqdm(total=4, desc="Overall progress") as pbar:
+            # Load and clean data
+            analyzer.load_and_clean_data()
+            pbar.update(1)
+            
+            # Extract features
+            analyzer.extract_features()
+            pbar.update(1)
+            
+            # Analyze topics
+            topics = analyzer.analyze_topics()
+            for topic_id, words in topics.items():
+                logger.info(f"Topic {topic_id}: {', '.join(words)}")
+            pbar.update(1)
+            
+            # Export results
+            analyzer.export_results()
+            pbar.update(1)
+            
+            # Visualize features
+            analyzer.visualize_features()
+            pbar.update(1)
+            
+        logger.info("Analysis completed successfully")
+    except Exception as e:
+        logger.error(f"Analysis failed: {str(e)}")
+        raise
 
-# Sort the DataFrame to show the most prominent bigrams/trigrams
-tfidf_df = tfidf_df.sort_values(by='TF-IDF Score', ascending=False)
-
-# Display the top 30 most prominent phrases
-print(tfidf_df.head(30))
-
-# Save top 30 TF-IDF phrases to CSV
-top_30_tfidf = tfidf_df.head(30)
-top_30_tfidf.to_csv('/app/data/top_30_tfidf_phrases.csv', index=False)
-
-# Plot the top 10 most prominent features
-top_tfidf_df = tfidf_df.head(10)
-
-plt.figure(figsize=(10,6))
-plt.barh(top_tfidf_df['Phrase'], top_tfidf_df['TF-IDF Score'], color='skyblue')
-plt.xlabel('TF-IDF Score')
-plt.title('Top 10 Most Prominent Features (Words) in 1-Star Reviews')
-plt.gca().invert_yaxis()  # Reverse the order for a better visual
-plt.tight_layout()
-plt.savefig('/app/data/top_10_prominent_features.png')
-plt.show()
-
-# Step 1: Apply LDA topic modeling
-n_topics = 5  # Number of topics you want to extract
-
-lda_model = LatentDirichletAllocation(n_components=n_topics, random_state=42)
-
-# Fit LDA to the TF-IDF features
-lda_model.fit(X_tfidf)
-
-# Step 2: Get top words for each topic
-n_top_words = 5  # Number of top words you want to see for each topic
-
-# Get the feature names (i.e., bigrams/trigrams)
-words = vectorizer.get_feature_names_out()
-
-# Display the top words for each topic
-for topic_idx, topic in enumerate(lda_model.components_):
-    print(f"Topic {topic_idx}:")
-    # Get top n words for the topic (sorted by their weight)
-    print(" ".join([words[i] for i in topic.argsort()[:-n_top_words - 1:-1]]))
-    print()
-
-# Step 3: Assigning topics to each review
-# Get the topic distribution for each review
-topic_distribution = lda_model.transform(X_tfidf)
-
-# Add the topic with the highest probability to the DataFrame
-df['predicted_topic'] = topic_distribution.argmax(axis=1)
-
-# Display the first few reviews with their predicted topics
-print(df[['content', 'predicted_topic']].head())
-
-# Export the reviews with their predicted topics to CSV
-df[['content', 'predicted_topic']].to_csv('/app/data/reviews_with_predicted_topics.csv', index=False)
-
-print("Process Complete!")
+if __name__ == "__main__":
+    main()
