@@ -154,12 +154,7 @@ To run the analysis:
    docker build -t trucker-analysis-cursor .
    ```
 
-2. Create a local data directory:
-   ```bash
-   mkdir data
-   ```
-
-3. Run the analysis:
+2. Run the analysis:
    ```bash
    docker run -v ${PWD}/data:/app/data trucker-analysis-cursor
    ```
