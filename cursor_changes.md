@@ -1,41 +1,41 @@
 ### File: truckerpathscraper.py
 
-- Error Handling:
+**Error Handling:**
 - Added comprehensive try/except blocks for network operations
 - Implemented logging instead of print statements
 - Added error handling for file operations
 - Added directory creation check before saving files
 
-- Modularity:
+**Modularity:**
 - Split the review fetching logic into smaller functions
 - Separated rate limiting into its own function
 - Created a dedicated function for directory setup
 - Added a main() function for better organization
 
-- Type Hints and Documentation:
+**Type Hints and Documentation:**
 - Added type hints for all functions
 - Added detailed docstrings for all functions
 - Improved inline comments for clarity
 - Added return type annotations
 
-- Performance Improvements:
+**Performance Improvements:**
 - Made batch size configurable
 - Added early exit conditions
 - Improved memory usage by not storing unnecessary data
 - Used pathlib for better path handling
 
-- Code Organization:
+**Code Organization:**
 - Grouped related functionality together
 - Added consistent function parameter ordering
 - Improved variable naming for clarity
 - Added configuration at the top of the script
 
-- Better Naming Conventions:
+**Better Naming Conventions:**
 - More descriptive function names (e.g., fetch_review_batch)
 - Clearer variable names
 - Consistent naming pattern throughout
 
-- Additional Features:
+**Additional Features:**
 - Added logging configuration
 - Added setup for output directory
 - Improved sample review display
@@ -43,45 +43,45 @@
 
 ### File: reviewanalysis.py
 
-- Code Organization:
+**Code Organization:**
 - Created a ReviewAnalyzer class to encapsulate all analysis operations
 - Split functionality into logical methods
 - Added a proper main() function
--
-- Error Handling:
+
+**Error Handling:**
 - Added comprehensive try/except blocks
 - Implemented proper logging instead of print statements
 - Added input validation
 - Added file existence checks
--
-- Modularity:
+
+**Modularity:**
 - Separated data cleaning into multiple methods
 - Created distinct methods for visualization and export
 - Made functions more focused and single-purpose
 
-- Documentation:
+**Documentation:**
 - Added detailed docstrings for the class and all methods
 - Added type hints
 - Improved inline comments
 - Added module-level documentation
 
-- Performance Improvements:
+**Performance Improvements:**
 - Used pathlib for better path handling
 - Optimized DataFrame operations
 - Added early validation checks
 
-- Better Naming:
+**Better Naming:**
 - More descriptive method names
 - Consistent naming conventions
 - Clear variable names
 
-- Additional Features:
+**Additional Features:**
 - Added logging configuration
 - Improved visualization using seaborn
 - Added proper file path handling
 - Added data validation checks
 
-- Best Practices:
+**Best Practices:**
 - Used type hints throughout
 - Followed PEP 8 style guidelines
 - Implemented proper class structure
@@ -89,46 +89,46 @@
 
 ### File: featurecheck.py
 
-- Code Organization:
+**Code Organization:**
 - Split into two main classes: TextPreprocessor and FeatureAnalyzer
 - Modular functions with single responsibilities
 - Clear separation of concerns
 
-- Error Handling:
+**Error Handling:**
 - Added comprehensive try/except blocks
 - Proper logging instead of print statements
 - Input validation
 - Resource download verification
 
-- Documentation:
+**Documentation:**
 - Added detailed docstrings
 - Type hints
 - Improved inline comments
 - Module-level documentation
 
-- Performance Improvements:
+**Performance Improvements:**
 - Optimized DataFrame operations
 - Better memory management
 - Reduced redundant operations
 
-- Better Naming:
-More descriptive method names
-Consistent naming conventions
-Clear variable names
+**Better Naming:**
+- More descriptive method names
+- Consistent naming conventions
+- Clear variable names
 
-- Additional Features:
-Proper path handling with pathlib
-Configurable parameters
-Better visualization using seaborn
-Improved output organization
+**Additional Features:**
+- Proper path handling with pathlib
+- Configurable parameters
+- Better visualization using seaborn
+- Improved output organization
 
-- Best Practices:
+**Best Practices:**
 PEP 8 compliance
 Type annotations
 Proper class structure
 Better error messages
 
-- Progress tracking:
+**Progress tracking:**
 - NLTK resource downloads
 - Text cleaning operations
 - Data loading and preprocessing
@@ -139,7 +139,7 @@ Better error messages
 
 ### File: requirements.txt
 
-- New dependencies:
+**New dependencies:**
 - seaborn for enhanced visualizations
 - tqdm for progress bars
 - typing-extensions for type hints support
